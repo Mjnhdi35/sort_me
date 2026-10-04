@@ -1,30 +1,37 @@
-import http from "node:http";
+import "reflect-metadata";
 
-const server = http.createServer((req, res) => {
-  console.log(req.method, req.url);
+import { app } from "./app.js";
+import { env } from "./config/env.js";
+import { AppDataSource } from "./database/data-source.js";
 
-  res.statusCode = 200;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
+async function bootstrap() {
+  await AppDataSource.initialize();
 
-  res.end(
-    JSON.stringify({
-      message: "Hello from Docker!",
-    }),
-  );
-});
+  console.log("Database connected");
 
-server.listen(3000, () => {
-  console.log("Server running on port 3000");
-});
-
-const shutdown = () => {
-  console.log("Shutting down server...");
-
-  server.close(() => {
-    console.log("Server closed");
-    process.exit(0);
+  const server = app.listen(env.PORT, () => {
+    console.log(`Server running on port ${env.PORT}`);
   });
-};
 
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+  const shutdown = async (signal: string) => {
+    console.log(`${signal} received. Shutting down...`);
+
+    server.close(async () => {
+      await AppDataSource.destroy();
+      process.exit(0);
+    });
+  };
+
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
+
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT");
+  });
+}
+
+bootstrap().catch((error) => {
+  console.error("Failed to start application", error);
+  process.exit(1);
+});
